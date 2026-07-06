@@ -18,10 +18,24 @@ class MigrationsTest {
     DataSource dataSource;
 
     @Test
-    void productsTableIsCreatedViaFlyway() throws Exception {
+    void allTablesAreCreatedViaFlyway() throws Exception {
         try (Connection c = dataSource.getConnection()) {
-            ResultSet rs = c.getMetaData().getTables(null, null, "PRODUCTS", null);
-            assertThat(rs.next()).isTrue();
+            assertTableExists(c, "products");
+            assertTableExists(c, "orders");
+            assertTableExists(c, "order_items");
+            ResultSet idx = c.getMetaData().getIndexInfo(null, null, "ORDERS", false, false);
+            boolean statusIndex = false;
+            while (idx.next()) {
+                if ("idx_orders_status".equalsIgnoreCase(idx.getString("INDEX_NAME"))) {
+                    statusIndex = true;
+                }
+            }
+            assertThat(statusIndex).as("idx_orders_status index present").isTrue();
         }
+    }
+
+    private void assertTableExists(Connection c, String name) throws Exception {
+        ResultSet rs = c.getMetaData().getTables(null, null, name.toUpperCase(), null);
+        assertThat(rs.next()).as("table %s exists", name).isTrue();
     }
 }
