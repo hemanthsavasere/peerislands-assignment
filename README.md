@@ -4,6 +4,53 @@ E-commerce order processing system handling inventory management, order lifecycl
 
 A REST API that lets you manage products, create orders, and move them through a defined state machine (PENDING → PROCESSING → SHIPPED → DELIVERED, with cancellation). Every order creation reserves stock and snapshots pricing. A background scheduler automatically advances pending orders. Concurrency between order state transitions, stock mutations, and the scheduler is handled through [JPA optimistic locking](https://docs.jboss.org/hibernate/orm/current/userguide/html_single/Hibernate_User_Guide.html#locking-optimistic) — no distributed locks, no queues.
 
+## Setup & Commands
+
+**Prerequisites:** Java 17 and Docker.
+
+```bash
+# Start PostgreSQL
+docker compose up -d
+
+# Run the app (http://localhost:8080)
+./gradlew bootRun
+
+# Run all tests
+./gradlew test
+
+# Build the project
+./gradlew build
+```
+
+**Health check:**
+
+```bash
+curl -s localhost:8080/actuator/health
+```
+
+**API base:** `http://localhost:8080/api/v1`
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/products` | `GET` | List all products |
+| `/api/v1/products/{id}` | `GET` | Get product by ID |
+| `/api/v1/products` | `POST` | Create a product |
+| `/api/v1/products/{id}` | `PUT` | Update a product |
+| `/api/v1/products/{id}` | `DELETE` | Delete a product |
+| `/api/v1/orders?status=PENDING` | `GET` | List orders (optional status filter) |
+| `/api/v1/orders/{id}` | `GET` | Get order by ID |
+| `/api/v1/orders` | `POST` | Create an order |
+| `/api/v1/orders/{id}/status` | `PUT` | Transition order status |
+| `/api/v1/orders/{id}/cancel` | `POST` | Cancel a PENDING order |
+
+**Push changes:**
+
+```bash
+git add .
+git commit -m "your message"
+git push
+```
+
 ## Techniques
 
 - **[Optimistic Locking](https://docs.jboss.org/hibernate/orm/current/userguide/html_single/Hibernate_User_Guide.html#locking-optimistic) via `@Version`** — Both `Order` and `Product` entities use versioned rows. Concurrent modifications detect conflicts at commit time and return HTTP 409 rather than silently overwriting. The scheduler-vs-cancel race is resolved purely through these version checks.
