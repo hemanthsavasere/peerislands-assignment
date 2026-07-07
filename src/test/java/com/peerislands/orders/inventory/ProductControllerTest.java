@@ -1,5 +1,8 @@
 package com.peerislands.orders.inventory;
 
+import com.peerislands.orders.orders.OrderService;
+import com.peerislands.orders.orders.dto.CreateOrderItemRequest;
+import com.peerislands.orders.orders.dto.CreateOrderRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -8,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,6 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class ProductControllerTest {
     @Autowired MockMvc mvc;
+    @Autowired OrderService orderService;
+    @Autowired InventoryService inventoryService;
 
     private String createProductJson(String sku) {
         return "{\"name\":\"Widget\",\"sku\":\"" + sku + "\",\"availableStock\":10,\"unitPrice\":9.99}";
@@ -88,6 +95,24 @@ class ProductControllerTest {
            .andExpect(status().isOk())
            .andExpect(jsonPath("$.name").value("Widget Pro"))
            .andExpect(jsonPath("$.availableStock").value(50));
+    }
+
+    @Test
+    void deleteBlockedWhenActiveReservationExists() throws Exception {
+        String created = mvc.perform(post("/api/v1/products").contentType(MediaType.APPLICATION_JSON)
+                            .content(createProductJson("W-RES"))).andReturn().getResponse().getContentAsString();
+        String pid = created.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+
+        CreateOrderRequest req = new CreateOrderRequest();
+        req.setCustomerName("Alice");
+        CreateOrderItemRequest item = new CreateOrderItemRequest();
+        item.setProductSku("W-RES");
+        item.setQuantity(1);
+        req.setItems(List.of(item));
+        orderService.create(req);
+
+        mvc.perform(delete("/api/v1/products/" + pid))
+           .andExpect(status().isConflict());
     }
 
     @Test
