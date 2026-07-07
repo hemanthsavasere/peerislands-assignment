@@ -46,23 +46,31 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public Order get(UUID id) {
-        return orderRepository.findById(id)
+        Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("order " + id + " not found"));
+        order.getItems().size(); // initialize lazy collection within transaction
+        return order;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Order> findAll(OrderStatus filter) {
+        List<Order> orders;
         if (filter == null) {
-            return orderRepository.findAll();
+            orders = orderRepository.findAll();
+        } else {
+            orders = orderRepository.findByStatus(filter);
         }
-        return orderRepository.findByStatus(filter);
+        orders.forEach(o -> o.getItems().size()); // initialize lazy collections
+        return orders;
     }
 
     @Override
     @Transactional
     public Order transitionTo(UUID id, OrderStatus target) {
-        Order order = get(id);
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("order " + id + " not found"));
+        order.getItems().size(); // initialize lazy collection
         order.transitionTo(target);
         if (target == OrderStatus.SHIPPED) {
             for (OrderItem item : order.getItems()) {
@@ -76,7 +84,9 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public Order cancel(UUID id) {
-        Order order = get(id);
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("order " + id + " not found"));
+        order.getItems().size(); // initialize lazy collection
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new IllegalOrderTransitionException(
                     "can only cancel PENDING orders (current status: " + order.getStatus() + ")");
