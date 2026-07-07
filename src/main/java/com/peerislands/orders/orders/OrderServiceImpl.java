@@ -7,7 +7,6 @@ import com.peerislands.orders.inventory.Product;
 import com.peerislands.orders.orders.dto.CreateOrderItemRequest;
 import com.peerislands.orders.orders.dto.CreateOrderRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -41,7 +40,7 @@ public class OrderServiceImpl implements OrderService {
                     line.getQuantity());
             order.addItem(item);
         }
-        return orderRepository.save(order);
+        return orderRepository.saveAndFlush(order);
     }
 
     @Override
@@ -61,9 +60,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public Order transitionTo(UUID id, OrderStatus target) {
-        orderRepository.flush();
         Order order = get(id);
         order.transitionTo(target);
         if (target == OrderStatus.SHIPPED) {

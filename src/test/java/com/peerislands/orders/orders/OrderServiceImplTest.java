@@ -1,5 +1,6 @@
 package com.peerislands.orders.orders;
 
+import com.peerislands.orders.common.IllegalOrderTransitionException;
 import com.peerislands.orders.common.InsufficientStockException;
 import com.peerislands.orders.common.ResourceNotFoundException;
 import com.peerislands.orders.inventory.InventoryService;
@@ -101,5 +102,65 @@ class OrderServiceImplTest {
         Order reloaded = orderService.get(o.getId());
         assertThat(reloaded.getItems().get(0).getProductName()).isEqualTo("Widget");
         assertThat(reloaded.getItems().get(0).getUnitPrice()).isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void transitionToProcessingFromPendingSucceeds() {
+        Order o = orderService.create(orderRequest(1));
+        Order updated = orderService.transitionTo(o.getId(), OrderStatus.PROCESSING);
+        assertThat(updated.getStatus()).isEqualTo(OrderStatus.PROCESSING);
+        Product p = inventoryService.findBySku(productSku);
+        assertThat(p.getReservedStock()).isEqualTo(1);
+    }
+
+    @Test
+    void transitionToShippedFinalizesReservation() {
+        Order o = orderService.create(orderRequest(2));
+        orderService.transitionTo(o.getId(), OrderStatus.PROCESSING);
+        Order shipped = orderService.transitionTo(o.getId(), OrderStatus.SHIPPED);
+        assertThat(shipped.getStatus()).isEqualTo(OrderStatus.SHIPPED);
+        Product p = inventoryService.findBySku(productSku);
+        assertThat(p.getAvailableStock()).isEqualTo(8);
+        assertThat(p.getReservedStock()).isEqualTo(0);
+    }
+
+    @Test
+    void transitionToDeliveredAfterShipped() {
+        Order o = orderService.create(orderRequest(1));
+        orderService.transitionTo(o.getId(), OrderStatus.PROCESSING);
+        orderService.transitionTo(o.getId(), OrderStatus.SHIPPED);
+        Order delivered = orderService.transitionTo(o.getId(), OrderStatus.DELIVERED);
+        assertThat(delivered.getStatus()).isEqualTo(OrderStatus.DELIVERED);
+    }
+
+    @Test
+    void transitionToSkippedTargetThrows() {
+        Order o = orderService.create(orderRequest(1));
+        assertThatThrownBy(() -> orderService.transitionTo(o.getId(), OrderStatus.DELIVERED))
+                .isInstanceOf(IllegalOrderTransitionException.class);
+    }
+
+    @Test
+    void cancelFromPendingReleasesStock() {
+        Order o = orderService.create(orderRequest(3));
+        Order cancelled = orderService.cancel(o.getId());
+        assertThat(cancelled.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        Product p = inventoryService.findBySku(productSku);
+        assertThat(p.getAvailableStock()).isEqualTo(10);
+        assertThat(p.getReservedStock()).isEqualTo(0);
+    }
+
+    @Test
+    void cancelFromProcessingThrows() {
+        Order o = orderService.create(orderRequest(1));
+        orderService.transitionTo(o.getId(), OrderStatus.PROCESSING);
+        assertThatThrownBy(() -> orderService.cancel(o.getId()))
+                .isInstanceOf(IllegalOrderTransitionException.class);
+    }
+
+    @Test
+    void cancelUnknownIdThrows404() {
+        assertThatThrownBy(() -> orderService.cancel(java.util.UUID.randomUUID()))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }
