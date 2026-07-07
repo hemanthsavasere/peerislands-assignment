@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -160,6 +161,43 @@ class OrderControllerTest {
     void cancelNotFoundReturns404() throws Exception {
         mvc.perform(post("/api/v1/orders/00000000-0000-0000-0000-000000000000/cancel"))
            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void orderSnapshotSurvivesProductEdit() throws Exception {
+        String created = mvc.perform(post("/api/v1/orders").contentType(MediaType.APPLICATION_JSON).content(orderJson(1)))
+                            .andReturn().getResponse().getContentAsString();
+        String id = objectMapper.readTree(created).get("id").asText();
+
+        UUID pid = inventoryService.findAll().stream()
+                .filter(p -> p.getSku().equals(productSku)).findFirst().orElseThrow().getId();
+        mvc.perform(put("/api/v1/products/" + pid).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Widget Pro\",\"availableStock\":50,\"unitPrice\":12.50}"))
+           .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/orders/" + id))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.items[0].productName").value("Widget"))
+           .andExpect(jsonPath("$.items[0].unitPrice").value(5.00));
+    }
+
+    @Test
+    void putStatusVersionConflictReturns409() throws Exception {
+        String created = mvc.perform(post("/api/v1/orders").contentType(MediaType.APPLICATION_JSON).content(orderJson(1)))
+                            .andReturn().getResponse().getContentAsString();
+        String id = objectMapper.readTree(created).get("id").asText();
+
+        mvc.perform(put("/api/v1/orders/" + id + "/status").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"PROCESSING\"}"))
+           .andExpect(status().isOk());
+
+        mvc.perform(put("/api/v1/orders/" + id + "/status").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"PENDING\"}"))
+           .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/orders/" + id + "/status").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHIPPED\"}"))
+           .andExpect(status().isOk());
     }
 
     private String extractOrderId(String json) throws Exception {
